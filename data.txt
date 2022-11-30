@@ -1,0 +1,409 @@
+# -*- coding: utf-8 -*-
+"""
+Spyder Editor
+
+This is a temporary script file.
+
+10/30  區分OTP和BIB_OTP
+
+
+
+
+"""
+import os
+from os import listdir
+import re
+import shutil
+import pandas as pd
+from os.path import isfile, isdir, join
+
+
+# 指定要列出所有檔案的目錄
+mypath = "D:/#log_manage/"
+dst = mypath + 'overall/'
+
+for dirPath, dirNames, fileNames in os.walk(mypath+'LOG'):
+    for f in fileNames:
+        print(os.path.join(dirPath, f))
+        if 'Act' in f:
+            shutil.copyfile(os.path.join(dirPath, f), dst+'/'+f)
+            
+
+# 取得所有檔案與子目錄名稱
+files = listdir(mypath + "overall/")
+
+data = []
+
+
+for f_n in files:
+    
+    GUI_version,Obj_code,Lot_no, OP_id,Log_name,Size,Device, Oven, Start_date, Start_time, Zone, Slot, BIB_ID, dut, value, issue = ['ng']*16
+
+    f = open( mypath + "overall/" + f_n , 'r',encoding="utf-8")
+    Size_raw = os.path.getsize( mypath  +'overall/' + f_n)
+    Size = str(round(Size_raw / 1024))
+    
+    
+    content = f.read().splitlines()
+    content_for_log = []
+
+ 
+
+    
+    BIB_ID = content[9].split(' ')[9]
+    Device = BIB_ID[0:-3]
+    
+    
+    index_mark = []  #step num, record num, line
+    mark_cnt = 0
+    classify = ''
+    
+    for line in content:
+        
+        a = re.findall(r'Test Program:.*PRG\\(.*)', line)
+        if a:
+            Obj_code = a[0]
+
+        a = re.findall(r'Lot No.:(.*), OP ID:(.*)', line)
+        if a:
+             Lot_no = a[0][0].strip()
+             OP_id = a[0][1].strip()
+             
+        a = re.findall(r'BI System:(.*), Machine No.:(.*)_(Z\d), Run Zone:.*Run Slot:(.*), Start time: (.*) (\d+:\d+:\d+)', line)
+        if a:
+            GUI_version = a[0][0].strip()
+            Oven = a[0][1].strip()
+            Zone = a[0][2].strip()
+            Slot = a[0][3].strip()
+            Start_date = a[0][4].strip()
+            Start_time = a[0][5].strip()
+            
+        a = re.findall(r'Active Log File:.*\\(.*).txt', line)
+        if a:
+            Log_name = a[0]
+
+  
+        if 'Test Step: ' in line and 'LDPS Monitor Record' in line:
+            a = re.findall(r'Test Step: (\d+), Record: (\d+).*', line)
+
+            step_num = int(a[0][0])
+            record_num = int(a[0][1])
+            mark = [step_num, record_num ,mark_cnt]
+            index_mark.append(mark)
+        mark_cnt = mark_cnt+1
+     
+        
+        
+        if 'software OTP' in line and '[CONFIRM_MSG_FORM]' in line and 'BIB' in line:
+            a = line.split(' ')
+
+            dut = line.split(' ')[8].split('#')[-1]
+            value = line.split(' ')[9].split('°')[0]  
+            issue = 'BIB_OTP'
+            single_data = ','.join([ GUI_version,Obj_code,Lot_no, OP_id,Log_name,Size,Device, Oven, Start_date, Start_time, Zone, Slot, BIB_ID, dut, value, issue,classify]) 
+            data.append(single_data) 
+            
+        if 'software OTP' in line and '[CONFIRM_MSG_FORM]' in line and 'Dut' in line:
+            a = line.split(' ')
+
+            dut = line.split(' ')[8].split('#')[-1]
+            value = line.split(' ')[9].split('°')[0]  
+            
+            compare_value = float(value)
+            compare_size = float(Size)
+            
+            
+            issue = 'OTP'
+            
+            if (compare_value < 136.0) and (compare_size > 20.0):
+                classify = 'gradually OTP'
+                
+            elif (compare_value > 136.0) and (compare_size < 20.0):
+                classify = 'start OTP'
+            
+            elif (compare_value > 136.0) and (compare_size > 20.0):
+                classify = 'prompt OTP at process'
+            else:
+                classify = 'unknown'
+            
+            
+                
+                
+                
+                
+            single_data = ','.join([ GUI_version,Obj_code,Lot_no, OP_id,Log_name,Size,Device, Oven, Start_date, Start_time, Zone, Slot, BIB_ID, dut, value, issue,classify]) 
+            data.append(single_data) 
+
+
+          
+        if 'read fail' in line and '[CONFIRM_MSG_FORM]' in line:
+            a = line.split(' ')
+
+            dut = line.split(' ')[8].split('#')[-1]
+            value = 'na'  
+            issue = 'read_fail'
+            single_data = ','.join([ GUI_version,Obj_code,Lot_no, OP_id,Log_name,Size,Device, Oven, Start_date, Start_time, Zone, Slot, BIB_ID, dut, value, issue,classify])
+            data.append(single_data) 
+            
+            
+        if 'software UVP' in line and '[CONFIRM_MSG_FORM]' in line:
+            a = line.split(' ')
+
+            dut = line.split(' ')[8].split('#')[-1]
+            value = line.split(' ')[9].split('V')[0]  
+            issue = 'UVP'
+            single_data = ','.join([ GUI_version,Obj_code,Lot_no, OP_id,Log_name,Size,Device, Oven, Start_date, Start_time, Zone, Slot, BIB_ID, dut, value, issue,classify])
+            data.append(single_data) 
+
+
+      
+        if 'software OCP' in line and '[CONFIRM_MSG_FORM]' in line and 'PM' in line:
+            
+            a = re.findall(r'[CONFIRM_MSG_FORM].*(PM #\d+)(.*)A is software OCP', line)
+            if a:
+                dut = a[0][0].strip()
+                value = a[0][1].strip()
+
+            issue = 'OCP'
+            single_data = ','.join([ GUI_version,Obj_code,Lot_no, OP_id,Log_name,Size,Device, Oven, Start_date, Start_time, Zone, Slot, BIB_ID, dut, value, issue,classify])
+            data.append(single_data) 
+            
+    
+        if 'software OCP' in line and '[CONFIRM_MSG_FORM]' in line and 'DPS' in line:
+            
+            a = re.findall(r'[CONFIRM_MSG_FORM].*(DPS\d)(.*)A is software OCP.*', line)
+            if a:
+                dut = a[0][0].strip()
+                value = a[0][1].strip()
+
+            issue = 'OCP'
+            single_data = ','.join([ GUI_version,Obj_code,Lot_no, OP_id,Log_name,Size,Device, Oven, Start_date, Start_time, Zone, Slot, BIB_ID, dut, value, issue,classify])
+            data.append(single_data) 
+            
+            
+        f.close()   
+
+
+fd = open( mypath + "output.txt",'w',encoding="utf-8")
+
+head_line = ','.join(['GUI_version','Obj_code','Lot_no', 'OP_id,Log_name','Size','Device', 'Oven', 'Start_date', 'Start_time', 'Zone', 'Slot', 'BIB_ID', 'dut', 'value', 'issue','classify'])
+
+fd.write(head_line)
+
+for line in data:
+    fd.write('\n')
+    fd.write(line)
+ 
+fd.close()
+
+
+
+
+#---------------------------計算每個項目的數量-----------------------------
+
+    
+#for f_n in files:
+#    start_pos = [0,0,0,0]   #dps, PM, dut, board
+#    component_len = []
+#    pattern_link = []
+#    
+#    check = 0
+#    
+#    for line in content:
+#
+#        if re.search(r'LDPS Monitor Record.*', line):
+#            if check == 0:
+#                start_pos[0] = mark_cnt
+#                check = 1
+#            
+#        if re.search(r'Power Module.* Monitor Record.*', line):
+#            if check == 1:
+#                start_pos[1] = mark_cnt
+#                check = 2           
+#            
+#        if re.search(r'BIB ID.*SLOT.*SOCKET.*', line):
+#            if check == 2:
+#                start_pos[2] = mark_cnt
+#                check = 3       
+#      
+#        if re.search(r'BIB ID.*SLOT.*BIB Temp 0.*', line):
+#            if check == 3:
+#                start_pos[3] = mark_cnt
+#                check = 4
+#         
+#        
+#        step_name = re.findall(r'TG Configure, Step: (\d+), Test Plan: (.*)', line)
+#        if step_name:
+#            pattern_link.append([step_name[0][0], step_name[0][1]])
+#            
+#   
+#        mark_cnt = mark_cnt + 1
+#        component_len = [start_pos[1]-start_pos[0]-1,start_pos[2]-start_pos[1]-1,start_pos[3]-start_pos[2]-2, 1]
+
+#---------------------------------------finish-----------------------------------
+
+#---------------------------------每個項目的起始位置做標記----------------------------------------
+#    dps_s_mark = []
+#    PM_s_mark = []
+#    dut_s_mark = []
+#    board_s_mark = []
+#    pattern_mark = []
+#
+#    mark_cnt2 = 0
+#    for line in content:
+#        if re.search(r'LDPS Monitor Record.*', line):
+#            dps_s_mark.append(mark_cnt2 + 1)
+#            step = re.findall(r'LDPS Monitor Record.*Test Step: (\d+).*',line)
+#            pattern_mark.append(step)
+#     
+#        if re.search(r'Power Module.* Monitor Record.*', line):
+#             PM_s_mark.append(mark_cnt2 + 1)
+#                   
+#        if re.search(r'BIB ID.*SLOT.*SOCKET.*', line):
+#            dut_s_mark.append(mark_cnt2 +2)
+#      
+#        if re.search(r'BIB ID.*SLOT.*BIB Temp 0.*', line):
+#            board_s_mark.append(mark_cnt2 +2)
+#         
+#        mark_cnt2 = mark_cnt2 + 1
+    
+#-----------------------------------------finish--------------------------------------------------
+
+
+
+#--------------------------------------記錄每一個項目--------------------------------------------
+#    dps_record = []
+#    PM_record = []
+#    dut_record = []
+#    board_record = []
+#    
+#
+#
+#    
+#    
+#    
+#    record_data = pd.DataFrame()
+#    
+#    
+#    
+#
+#
+#    for i in dps_s_mark:
+#        A = []
+#        B = []
+#        for j in list(range(0, component_len[0])):
+#            a = re.findall(r'(DPS\d).*Read Volt: (.*), Read Current: (.*)', content[i+j])
+#            if a:
+#                A.append([a[0][0], a[0][1], a[0][2]])
+#        df2 = pd.DataFrame( A, columns=list(['DPS','volt', 'current']))
+#        record_data.append(df2)
+#        
+#        
+#    
+#
+
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+#    for i in dps_s_mark:
+#        time_frame_volt = []
+#        time_frame_current = []
+#        tf_volt = []
+#        tf_current=[]
+#        for j in list(range(0, component_len[0])):
+#            a = re.findall(r'(DPS\d).*Read Volt: (.*), Read Current: (.*)', content[i+j])
+#            if a:
+#                time_frame_volt.append(a[0][0]+'-V')
+#                time_frame_current.append(a[0][0]+'-C')
+#                tf_volt.append(a[0][1])
+#                tf_current.append(a[0][2])
+##        dps_record.append([ dict(zip(time_frame_volt,tf_volt)), dict(zip(time_frame_current,tf_current))])
+#                dict(zip(time_frame_volt,tf_volt))
+#      
+#                
+#                
+#            
+#    for i in PM_s_mark:
+#        time_frame_volt = []
+#        time_frame_current = []
+#        tf_volt = []
+#        tf_current=[]
+#        for j in list(range(0, component_len[1])):
+#            a = re.findall(r'(PM\d+).*Read Volt: (.*), Read Current: (.*)', content[i+j])
+#            if a:
+#                time_frame_volt.append(a[0][0]+'-V')
+#                time_frame_current.append(a[0][0]+'-C')
+#                tf_volt.append(a[0][1])
+#                tf_current.append(a[0][2])
+#        PM_record.append([ dict(zip(time_frame_volt,tf_volt)), dict(zip(time_frame_current,tf_current))])
+#    
+#             
+#    for i in dut_s_mark:
+#        time_frame_temp = []
+#        time_frame_heater = []
+#        time_frame_fan = []
+#        time_frame_power = []
+#        
+#        tf_temp = []
+#        tf_heater = []
+#        tf_fan = []
+#        tf_power = []
+#        
+#        for j in list(range(0, component_len[2])):  
+#            if 'HT/FA' in content[i+j]:
+#                t_dut =    content[i+j][45:].strip().split(' ')[0]
+#                t_temp =   content[i+j][45:].strip().split('°C')[0].split(' ')[-1]
+#                t_heater = content[i+j][45:].strip().split('/')[0].split(' ')[-1]
+#                t_fan =    content[i+j][45:].strip().split('/')[1].split(' ')[0]
+#                t_power =  content[i+j][45:].strip().split('W')[0].split(' ')[-1]
+#                
+#                
+#                time_frame_temp.append('d-' + t_dut + '-temp')
+#                time_frame_heater.append('d-' + t_dut + '-HS')
+#                time_frame_fan.append('d-' + t_dut + '-FS')
+#                time_frame_power.append('d-' + t_dut + '-PWR')
+#                
+#                tf_temp.append(t_temp)
+#                tf_heater.append(t_heater)
+#                tf_fan.append(t_fan)
+#                tf_power.append(t_power)
+#        dut_record.append([dict(zip(time_frame_temp,tf_temp)),dict(zip(time_frame_heater,tf_heater)),dict(zip(time_frame_fan,tf_fan)),dict(zip(time_frame_power,tf_power))])
+#                
+#                
+#                
+#    for i in board_s_mark: 
+#        
+#        tf_board = ['b-1-temp','b-2-temp','b-3-temp','b-4-temp','b-5-temp','b-6-temp']
+#        for j in list(range(0, component_len[3])):
+#            t_b_temp = []
+#            
+#            for k in list(range(3,9)):
+#                t_b_temp.append(content[i+j].split('°C')[k].strip())
+#            board_record.append(dict(zip(tf_board,t_b_temp)))
+
+#---------------------------------------finish----------------------------------------              
+          
+    
+
+#    PM_df = pd.DataFrame(PM_record, columns = ['PM_port', 'volt','current'])
+#    dut_df = pd.DataFrame(dut_record, columns = ['dut', 'temp','heater','fan','power'])
+#    board_df = pd.DataFrame(board_record, columns = ['b_temp_1', 'b_temp_2','b_temp_3','b_temp_4','b_temp_5','b_temp_6'])
+    
+        
+#    a = dps_df.unstack(level=)
+        
+        
+
+
+ 
+        
+    
+    
